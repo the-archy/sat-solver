@@ -1,0 +1,1 @@
+/usr/bin/c++ "CMakeFiles/sat-solver.dir/main.cpp.o" "CMakeFiles/sat-solver.dir/dimacs.cpp.o" "CMakeFiles/sat-solver.dir/solver.cpp.o" -o sat-solver 
