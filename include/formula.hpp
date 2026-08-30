@@ -34,6 +34,7 @@ public:
   void appendLiteral(Literal literal) { literals_.push_back(literal); }
 
   void closeClause(std::size_t firstLiteralIdx) {
+    
     if (firstLiteralIdx > literals_.size()) {
       throw std::logic_error("Clause starts outside the formula");
     }
@@ -60,9 +61,9 @@ public:
     }
 
     literals_.insert(
-        literals_.end(), // where
-        clauseLiterals.begin(), // first
-        clauseLiterals.end() // last
+        literals_.end(),
+        clauseLiterals.begin(),
+        clauseLiterals.end()
     );
 
     closeClause(first);
