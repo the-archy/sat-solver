@@ -1,3 +1,0 @@
-/home/archy/Documents/ArchySAT/sat-solver/build/CMakeFiles/sat-solver.dir
-/home/archy/Documents/ArchySAT/sat-solver/build/CMakeFiles/edit_cache.dir
-/home/archy/Documents/ArchySAT/sat-solver/build/CMakeFiles/rebuild_cache.dir
