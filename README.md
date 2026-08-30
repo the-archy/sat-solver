@@ -20,6 +20,3 @@ Je ve složce eval.
 - Chápu, že old school C programátoři by mě za moderní `#pragma once` asi zastřelili
 - Nějak jsem se snažil využít lecture-log.pdf ze seminářů
 - Dělal jsem aj verzi napsanou v TypeScriptu, která běžela v Bun runtime a byla dokonce o něco výkonnější - do teď nerozumím jak, asi nějaká Zig/Rust LLVM magie
-
-
-

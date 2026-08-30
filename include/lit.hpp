@@ -3,6 +3,9 @@
 
 #include <cstdint>
 
+// Literal encoding from lecture-log.pdf, seminar 7 ("Reprezentace entit"):
+// variable k -> 2k (positive) / 2k+1 (negative); var(l) = l >> 1;
+// neg(l) = l ^ 1; sgn(l) (is-positive) = (l & 1) == 0.
 class Literal {
 
 public:

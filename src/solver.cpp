@@ -9,6 +9,12 @@
 #include <utility>
 #include <vector>
 
+// Iterative watched-literal DPLL, following lecture-log.pdf, seminar 7
+// ("Zaklady implementace DPLL v solverech", a simplified MiniSat). The private
+// methods below map 1:1 to the pseudocode there: search / assume / enqueue /
+// propagate / propagate-clause / undo-one / backtrack. Plain chronological
+// backtracking only -- no clause learning / non-chronological backtracking
+// (that is CDCL, seminar 8).
 class Solver::Impl {
 public:
   explicit Impl(const Formula& formula)
@@ -53,16 +59,24 @@ public:
 
 private:
   const Formula& formula_;
+  // Solver-local copy of the literal pool; the two watched literals of each
+  // clause are the first two entries of its window and get swapped in place.
   std::vector<Literal> literals_;
-  std::vector<Value> assignment_;
-  std::vector<Literal> trail_;
-  std::vector<std::size_t> trailLimits_;
+  std::vector<Value> assignment_;          // "assigns": True / False / Unassigned per variable
+  std::vector<Literal> trail_;             // literals assigned True, in assignment order
+  std::vector<std::size_t> trailLimits_;   // "trail-lim": trail index of each decision literal
+  // Per decision level, stands in for the log's per-variable "tries" counter:
+  // has the opposite phase of this decision been tried yet?
   std::vector<bool> decisionTried_;
+  // watches_[l] holds every clause in which neg(l) is a watched literal.
   std::vector<std::vector<std::uint32_t>> watches_;
-  std::deque<Literal> propagationQueue_;
+  std::deque<Literal> propagationQueue_;   // "prop-q": literals set True, awaiting propagate()
+  // Static literal-occurrence counts for chooseDecisionLiteral() (DLCS-style).
   std::vector<std::uint32_t> posOccurrences_;
   std::vector<std::uint32_t> negOccurrences_;
   SolverStats stats_;
+  // (The log's per-variable "levels" array is only needed for CDCL conflict
+  // analysis, so plain DPLL omits it.)
 
   void computeOccurrenceCounts() {
     for (const Literal literal : literals_) {
@@ -76,6 +90,7 @@ private:
     }
   }
 
+  // Register every clause of >= 2 literals under neg() of its first two literals.
   void initWatches() {
     const auto& clauses = formula_.clauses();
 
@@ -110,6 +125,9 @@ private:
     return value == Value::True ? Value::False : Value::True;
   }
 
+  // "enqueue": assign the literal True (return false on conflict, true if it was
+  // already True), pushing it onto the trail and the propagation queue.
+  // fromPropagation only drives the unit-propagation counter (output line 5).
   [[nodiscard]] bool enqueue(Literal literal, bool fromPropagation) noexcept {
     const Value current = valueOf(literal);
 
@@ -133,6 +151,9 @@ private:
     return true;
   }
 
+  // "propagate": drain prop-q; for each literal p revisit every clause in
+  // watches_[p]. On conflict, return the not-yet-visited clauses to watches_[p],
+  // clear prop-q and report failure.
   [[nodiscard]] bool propagate() {
     while (!propagationQueue_.empty()) {
       const Literal literal = propagationQueue_.front();
@@ -157,6 +178,10 @@ private:
     return true;
   }
 
+  // "propagate-clause": neg(literal) is a watched literal of this clause and has
+  // just become False. Move it to slot 1, then try to swap in a non-False
+  // replacement from slot 2 onward. If none exists, the other watch (slot 0) is
+  // forced -- enqueue it, or report the conflict.
   [[nodiscard]] bool propagateClause(std::uint32_t clauseIndex,
                                      Literal literal) {
     const Clause& clause = formula_.clauses()[clauseIndex];
@@ -170,6 +195,9 @@ private:
     const Literal other = literals_[first];
 
     if (valueOf(other) == Value::True) {
+      // Clause already satisfied. Keep watching neg(literal) by re-adding it to
+      // watches_[literal]; the log's pseudocode omits this re-add and so loses
+      // the watch.
       watch(literal, clauseIndex);
       return true;
     }
@@ -188,12 +216,20 @@ private:
     return enqueue(other, true);
   }
 
+  // "undo-one": pop the newest trail literal and unassign it. Unlike the log,
+  // trail-lim is popped by backtrack(), not here.
   void undoOne() noexcept {
     const Literal literal = trail_.back();
     trail_.pop_back();
     assignment_[literal.variable()()] = Value::Unassigned;
   }
 
+  // "backtrack": walk decision levels from the top. At each level undo the trail
+  // down to and including the decision literal; if its opposite phase is still
+  // untried, enqueue that phase and return true. If every level is exhausted the
+  // formula is UNSAT. Note we unassign the decision literal *before*
+  // enqueue(!decisionLiteral), so that call actually takes (the log's pseudocode
+  // leaves it assigned, which would make the enqueue fail).
   [[nodiscard]] bool backtrack() noexcept {
     while (!trailLimits_.empty()) {
       const std::size_t levelStart = trailLimits_.back();
@@ -217,6 +253,9 @@ private:
   }
 
   [[nodiscard]] bool search() {
+    // Not in the log's search() pseudocode: reject empty clauses and seed unit
+    // clauses into prop-q. initWatches() only watches clauses of >= 2 literals,
+    // so units would otherwise never be propagated.
     for (const Clause& clause : formula_.clauses()) {
       if (clause.isEmpty()) {
         return false;
@@ -241,6 +280,7 @@ private:
         return true;
       }
 
+      // "assume p": open a new decision level, then enqueue the chosen literal.
       const Literal decision = chooseDecisionLiteral();
       ++stats_.decisionVertices;
       trailLimits_.push_back(trail_.size());
@@ -252,6 +292,11 @@ private:
     }
   }
 
+  // Static DLCS-style branching: among unassigned variables pick the one with
+  // the most literal occurrences in the original formula, then branch on its
+  // more frequent polarity. The log describes MiniSat's dynamic activity/VSIDS
+  // heuristic instead; it lets any DPLL heuristic be used, and this one is cheap
+  // but never updated as clauses get satisfied.
   [[nodiscard]] Literal chooseDecisionLiteral() const {
     std::uint32_t bestVariable =
         static_cast<std::uint32_t>(assignment_.size());
